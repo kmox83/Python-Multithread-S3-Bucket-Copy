@@ -9,7 +9,11 @@ from boto.s3.connection import S3Connection
 AWS_ACCESS_KEY_ID = ""
 AWS_SECRET_ACCESS_KEY = ""
 
-def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, destination_folder=None, threads=10):
+def s3_folder_name_by_time():
+	now = datetime.datetime.now()
+	return "%d-%d-%d_%d_%d_%d" % (now.year, now.month, now.day, now.hour, now.minute, now.second)
+
+def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, destination_folder=None, name_by_time=False, threads=10):
 	"""
 	Example usage: copy_s3_bucket(SOURCE_BUCKET='my-source-bucket', DEST_BUCKET='my-destination-bucket', 
 	prefix='parent/child/dir/', destination_folder='destination/dir/', threads=20)
@@ -24,8 +28,16 @@ def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, destination_folder=N
 	rs = bucket.list()
 	if prefix: rs = bucket.list(prefix)
 	
+	
 	# Check for destination folder
 	if destination_folder: dest_dir = destination_folder
+	
+	# Check if I have to use the automatic naming
+	if name_by_time: 
+		if dest_dir=="":
+			dest_dir = s3_folder_name_by_time()
+		else:
+			dest_dir = "%s/%s" % (dest_dir,s3_folder_name_by_time())
 
 	class CopyKey(Thread):
 		def __init__ (self, key_name):
@@ -62,7 +74,7 @@ def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, destination_folder=N
 	# Request threads
 	for key in rs:
 		total_keys += 1
-		print "%s : Requesting copy thread for key %s to key %s" % (datetime.datetime.now(), key.name, key_destination)
+		print "%s : Requesting copy thread for key %s to key %s" % (datetime.datetime.now(), key.name, "%s/%s" % (dest_dir, key.name))
 		current = CopyKey(key.name)
 		key_copy_thread_list.append(current)
 		current.start()
