@@ -9,18 +9,23 @@ from boto.s3.connection import S3Connection
 AWS_ACCESS_KEY_ID = ""
 AWS_SECRET_ACCESS_KEY = ""
 
-def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, threads=10):
+def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, destination_folder=None, threads=10):
 	"""
-	Example usage: copy_s3_bucket(SOURCE_BUCKET='my-source-bucket', DEST_BUCKET='my-destination-bucket', prefix='parent/child/dir/', threads=20)
+	Example usage: copy_s3_bucket(SOURCE_BUCKET='my-source-bucket', DEST_BUCKET='my-destination-bucket', 
+	prefix='parent/child/dir/', destination_folder='destination/dir/', threads=20)
 	"""
 	# Init s3
 	conn = S3Connection(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
 	bucket = conn.get_bucket(SOURCE_BUCKET)
 	dest_bucket = conn.get_bucket(DEST_BUCKET)
-
+	dest_dir = ""
+	
 	# Filter by prefix
 	rs = bucket.list()
 	if prefix: rs = bucket.list(prefix)
+	
+	# Check for destination folder
+	if destination_folder: dest_dir = destination_folder
 
 	class CopyKey(Thread):
 		def __init__ (self, key_name):
@@ -33,14 +38,16 @@ def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, threads=10):
 			thread_bucket = conn.get_bucket(SOURCE_BUCKET)
 			thread_dest_bucket = conn.get_bucket(DEST_BUCKET)
 			thread_key = thread_bucket.get_key(self.key_name)
-
+			
+			key_destination = "%s/%s" % (dest_dir, self.key_name)
+			
 			# Only copy if not exists on dest bucket
-			if not thread_dest_bucket.get_key(self.key_name):
+			if not thread_dest_bucket.get_key(key_destination):
 				pool_sema.acquire()
 				self.status = "%s : Sempahore Acquired, Copy Next" % datetime.datetime.now()
 				try:
-					thread_key.copy(DEST_BUCKET, self.key_name)
-					self.status = "%s : Copy Success : %s" % (datetime.datetime.now(), self.key_name)
+					thread_key.copy(DEST_BUCKET, key_destination)
+					self.status = "%s : Copy Success : %s" % (datetime.datetime.now(), key_destination)
 				except:
 					self.status = "%s : Copy Error : %s" % (datetime.datetime.now(), sys.exc_info())
 				finally:
@@ -55,7 +62,7 @@ def copy_s3_bucket(SOURCE_BUCKET, DEST_BUCKET, prefix=None, threads=10):
 	# Request threads
 	for key in rs:
 		total_keys += 1
-		print "%s : Requesting copy thread for key %s" % (datetime.datetime.now(), key.name)
+		print "%s : Requesting copy thread for key %s to key %s" % (datetime.datetime.now(), key.name, key_destination)
 		current = CopyKey(key.name)
 		key_copy_thread_list.append(current)
 		current.start()
